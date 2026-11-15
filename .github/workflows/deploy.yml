@@ -1,5 +1,8 @@
-# Web build and itch.io deploy for Ctrl-Z (Godot 3.6.2)
-name: Deploy Ctrl-Z
+# Web build and itch.io deploy ("Ctrl-Z", Godot 4.7).
+# - pull_request: export the Web build and attach it to the run as an artifact (no deploy).
+# - push of a tag v*: export and push to itch.io with butler.
+# - workflow_dispatch: the same by hand, from any branch; deploy only if "deploy" is ticked.
+name: Deploy
 
 on:
   pull_request:
@@ -8,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       deploy:
-        description: Push Ctrl-Z build to itch.io
+        description: Push the build to itch.io
         type: boolean
         default: false
 
@@ -20,13 +23,14 @@ jobs:
   web:
     runs-on: ubuntu-latest
     env:
-      GODOT_VERSION: 3.6.2
-      ITCH_GAME_SLUG: ${{ vars.ITCH_GAME || 'real-school/ctrl-z' }}
+      GODOT_VERSION: 4.7.2
+      # itch.io page: https://real-school.itch.io/ctrl-z -> "real-school/ctrl-z".
+      # A repository variable ITCH_GAME, if set, takes precedence.
+      ITCH_GAME: ${{ vars.ITCH_GAME || 'real-school/ctrl-z' }}
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
-          fetch-depth: 0
+          fetch-depth: 0   # for git describe --tags
 
       - name: Cache Godot and Web templates
         id: cache-godot
@@ -34,41 +38,87 @@ jobs:
         with:
           path: |
             ~/godot
-            ~/.local/share/godot/templates
+            ~/.local/share/godot/export_templates
           key: godot-web-${{ env.GODOT_VERSION }}-linux-x86_64
 
-      - name: Download Godot 3.6.2 Headless and Web templates
+      # The full templates archive is ~1 GB; only the Web ones are kept in the cache.
+      - name: Download Godot and Web templates
         if: steps.cache-godot.outputs.cache-hit != 'true'
         run: |
           base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
           mkdir -p ~/godot
-          curl -sSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux_headless.64.zip"
+          curl -sSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
           unzip -q godot.zip -d ~/godot
-          mv ~/godot/Godot_v${GODOT_VERSION}-stable_linux_headless.64 ~/godot/godot
-          chmod +x ~/godot/godot
+          mv ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 ~/godot/godot
           curl -sSL -o templates.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
-          tdir=~/.local/share/godot/templates/${GODOT_VERSION}.stable
+          tdir=~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
           mkdir -p "$tdir"
-          unzip -q -j templates.tpz 'templates/webassembly_*' 'templates/version.txt' -d "$tdir"
+          unzip -q -j templates.tpz 'templates/web_nothreads_*' 'templates/version.txt' -d "$tdir"
           rm godot.zip templates.tpz
           ls -la "$tdir"
 
-      - name: Import project assets
+      # If export_presets.cfg is missing, create a "Web" preset (no threads, so it
+      # works on itch.io without SharedArrayBuffer). A committed file is used as is.
+      - name: Ensure Web export preset
         run: |
-          rm -rf .import
-          ~/godot/godot --no-window --quit --path .
+          if [ -f export_presets.cfg ]; then
+            grep -q 'name="Web"' export_presets.cfg || { echo "::error::export_presets.cfg has no preset named Web"; exit 1; }
+            exit 0
+          fi
+          cat > export_presets.cfg <<'EOF'
+          [preset.0]
+
+          name="Web"
+          platform="Web"
+          runnable=true
+          advanced_options=false
+          dedicated_server=false
+          custom_features=""
+          export_filter="all_resources"
+          include_filter=""
+          exclude_filter=""
+          export_path="builds/web/index.html"
+          patches=PackedStringArray()
+          encryption_include_filters=""
+          encryption_exclude_filters=""
+          seed=0
+          encrypt_pck=false
+          encrypt_directory=false
+          script_export_mode=2
+
+          [preset.0.options]
+
+          custom_template/debug=""
+          custom_template/release=""
+          variant/extensions_support=false
+          variant/thread_support=false
+          vram_texture_compression/for_desktop=true
+          vram_texture_compression/for_mobile=false
+          html/export_icon=true
+          html/custom_html_shell=""
+          html/head_include=""
+          html/canvas_resize_policy=2
+          html/focus_canvas_on_start=true
+          html/experimental_virtual_keyboard=false
+          progressive_web_app/enabled=false
+          EOF
+
+      - name: Import project
+        run: |
+          rm -rf .godot
+          ~/godot/godot --headless --path . --import
 
       - name: Export Web build
         run: |
           mkdir -p builds/web
-          ~/godot/godot --no-window --path . --export "Web" builds/web/index.html
+          ~/godot/godot --headless --path . --export-release "Web" builds/web/index.html
           test -s builds/web/index.pck || { echo "::error::Export produced no index.pck"; exit 1; }
           ls -la builds/web
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ctrl-z-web-${{ github.sha }}
+          name: web-${{ github.sha }}
           path: builds/web
           retention-days: 14
 
@@ -78,9 +128,12 @@ jobs:
           BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
         run: |
           [ -n "$BUTLER_API_KEY" ] || { echo "::error::Secret BUTLER_API_KEY is not set"; exit 1; }
+          case "$ITCH_GAME" in
+            *'<'*|'') echo "::error::Set ITCH_GAME (user/game) in the workflow or as a repository variable"; exit 1 ;;
+          esac
           curl -sSL -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
           unzip -q butler.zip -d ~/butler
           chmod +x ~/butler/butler
           version=$(git describe --tags --always)
-          ~/butler/butler push builds/web "$ITCH_GAME_SLUG:web" --userversion "$version"
-          ~/butler/butler status "$ITCH_GAME_SLUG:web"
+          ~/butler/butler push builds/web "$ITCH_GAME:web" --userversion "$version"
+          ~/butler/butler status "$ITCH_GAME:web"
