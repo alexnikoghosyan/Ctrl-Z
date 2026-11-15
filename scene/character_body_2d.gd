@@ -3,7 +3,7 @@ extends CharacterBody2D
 const WALK_SPEED := 150.0
 const RUN_SPEED := 200.0
 const DOUBLE_TAP_WINDOW := 0.3
-const DOG_FOLLOW_DELAY := 0.3dssdf2
+const DOG_FOLLOW_DELAY := 0.32
 const DOG_FOLLOW_DISTANCE := 160.0
 const DOG_FOLLOW_SPEED := 520.0
 
