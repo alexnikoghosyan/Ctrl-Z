@@ -6,6 +6,8 @@ const ROBOT_DIALOGUE_EXPANDED := "res://dialogue_robot_panel_expanded.png"
 const PIXEL_FONT := "res://Fonts/BlockBlueprint.ttf"
 const SLEEPING_BEDROOM := "res://bedroom_sleeping.png"
 const CHERNOBYL_SHEET := "res://chernobyl_environment_sheet.png"
+const CHERNOBYL_INTERIOR := "res://chernobyl_interior_corridor.png"
+const ENTRANCE_DOOR_SPRITE := "res://chernobyl_entrance_door.png"
 const GUARD_SPRITE := "res://Images/chernobyl_guard_walk.png"
 const CHERNOBYL_SELECTED_FRAME := 2 # Third still from the lower row of the supplied sheet.
 const CHERNOBYL_FRAME_RECTS := [
@@ -17,10 +19,23 @@ const CHERNOBYL_FRAME_RECTS := [
 const ROOSTER_CROW := "res://Music/rooster_crow.mp3"
 const CHERNOBYL_AMBIENCE := "res://Music/chernobyl_ambience.mp3"
 const ROBOT_DOG_BARK := "res://Music/robot_dog_bark.mp3"
+const BOOK_OPEN_SFX := "res://Music/book_open.mp3"
+const FLICKER_SFX := "res://Music/light_flicker.mp3"
+const RADIO_SFX := "res://Music/radio_communication.mp3"
+const POWER_SURGE_SFX := "res://Music/power_surge.mp3"
+const COUNTDOWN_BEEP_SFX := "res://Music/countdown_beep.wav"
+const PLANT_DOOR_OPEN_SFX := "res://Music/plant_door_open.wav"
 const TYPEWRITER_SPEED := 32.0
-const BOMB_COUNTDOWN_SECONDS := 20.0 * 60.0
-const GUARD_POSITION := Vector2(760.0, 506.0)
-const REMOTE_PANEL_POSITION := Vector2(1010.0, 545.0)
+const BOMB_COUNTDOWN_SECONDS := 5.0 * 60.0
+const GUARD_GROUND_Y := 609.5
+const GUARD_POSITION := Vector2(760.0, GUARD_GROUND_Y)
+const GUARD_FRAME_BOTTOMS := [678.0, 703.0, 678.0, 724.0, 724.0, 676.0, 698.0, 700.0]
+const GUARD_FRAME_HEIGHT := 724.0
+const GUARD_SCALE := 0.29
+const ENTRY_DOOR_SCALE := 0.24
+const PLANT_ENTRY_POSITION := Vector2(900.0, GUARD_GROUND_Y)
+const PLANT_INTERIOR_WIDTH := 1672.0
+const REMOTE_PANEL_POSITION := Vector2(1510.0, 545.0)
 
 var player_in_area := false
 var bed_player_in_area := false
@@ -31,8 +46,12 @@ var opening_book := false
 var ending_started := false
 var mission_active := false
 var guard_talked := false
+var entry_door_open := false
+var inside_plant := false
+var room_transition_active := false
 var countdown_active := false
 var code_solved := false
+var code_hint_shown := false
 var bomb_disarmed := false
 var bomb_exploded := false
 var mission_dialogue_open := false
@@ -43,16 +62,26 @@ var countdown_seconds := BOMB_COUNTDOWN_SECONDS
 
 var dialogue_panel: TextureRect
 var dialogue_text: Label
+var guard_dialogue_backing: ColorRect
+var guard_dialogue_portrait: TextureRect
 var robot_dialogue_texture: Texture2D
 var fade_to_black: ColorRect
 var rooster_player: AudioStreamPlayer
 var chernobyl_ambience_player: AudioStreamPlayer
 var dog_bark_player: AudioStreamPlayer
+var book_open_player: AudioStreamPlayer
+var flicker_player: AudioStreamPlayer
+var radio_player: AudioStreamPlayer
+var power_surge_player: AudioStreamPlayer
+var countdown_beep_player: AudioStreamPlayer
+var countdown_beep_elapsed := 0.0
 var chernobyl_background: TextureRect
+var interior_background: TextureRect
 var chernobyl_frames: Array[Texture2D] = []
 var chernobyl_frame_index := 0
 var guard_sprite: AnimatedSprite2D
-var remote_panel_marker: PanelContainer
+var entry_door_pivot: Node2D
+var plant_door_player: AudioStreamPlayer
 var mission_hud_layer: CanvasLayer
 var countdown_label: Label
 var interaction_hint: Label
@@ -67,10 +96,25 @@ var conversation_finished := false
 var typing_dialogue := false
 var typewriter_elapsed := 0.0
 const DIALOGUE_LINES := [
-	"Երեխա: Ինչ պատահեց Չեռնոբիլում?",
-	"Ռոբոտ-շուն: 1986-ին ատոմակայանում վթար եղավ:\nՌադիացիա տարածվեց:",
-	"Երեխա: Ինչ եղավ մարդկանց հետ?",
-	"Ռոբոտ-շուն: Մարդկանց տարհանեցին:\nՏարածքը երկար տարիներ վտանգավոր մնաց."
+	"Երեխա: Ռոբոտ-շո՛ւն, կպատմե՞ս Չեռնոբիլի ատոմակայանի պատմությունը։ Ինչո՞ւ այն պայթեց։",
+	"Ռոբոտ-շուն: Կայանը կառուցվեց Ուկրաինայում՝ Պրիպյատ քաղաքի մոտ։ Առաջին էներգաբլոկը գործարկվեց 1977-ին, իսկ 1984-ին կայանն արդեն չորս բլոկ ուներ։ Պրիպյատում ապրում էին աշխատողներն ու նրանց ընտանիքները։",
+	"Երեխա: Իսկ ինչո՞ւ հենց չորրորդ բլոկը պայթեց։",
+	"Ռոբոտ-շուն: 1986-ի ապրիլի 26-ի գիշերը այնտեղ ստուգում էին՝ հոսանքն անջատվելուց հետո տուրբինն ինչքան կկարողանա պահուստային հոսանք տալ։",
+	"Երեխա: Այսինքն՝ փորձում էին անվտանգության համակարգը ստուգե՞լ։",
+	"Ռոբոտ-շուն: Այո։ Բայց հզորությունը շատ ցածր ընկավ, ռեակտորը դարձավ անկայուն, իսկ փորձարկման ընթացքում մի քանի պաշտպանիչ համակարգ անջատված էր։",
+	"Երեխա: Իսկ ռեակտորի մեջ ի՞նչ տեղի ունեցավ։",
+	"Ռոբոտ-շուն: Այդ RBMK ռեակտորն ուներ նախագծային վտանգավոր թերություններ։ Այդ պայմաններում ջրի գոլորշին կարող էր հզորությունը նվազեցնելու փոխարեն մեծացնել։ Կանգնեցման ձողերի թերության պատճառով վթարային կոճակը սեղմելիս հզորությունը սկզբում ավելի աճեց։",
+	"Երեխա: Ու դրա՞ց եղավ պայթյունը։",
+	"Ռոբոտ-շուն: Գիշերվա 01:23-ին հզորությունը կտրուկ աճեց։ Գոլորշու պայթյունները վնասեցին ռեակտորն ու շենքը, գրաֆիտը հրդեհվեց, և ռադիոակտիվ նյութեր տարածվեցին օդում։ Դա ատոմային ռումբի պայթյուն չէր։",
+	"Երեխա: Իսկ մոտակայքում ապրող մարդիկ ի՞նչ եղան։",
+	"Ռոբոտ-շուն: Հրշեջներն առաջիններից էին, որ գնացին հանգցնելու հրդեհը։ Պրիպյատի բնակիչներին տարհանեցին հաջորդ օրը՝ վթարից մոտ 36 ժամ անց։ Շատերը սկզբում չգիտեին՝ որքան վտանգավոր էր ճառագայթումը։",
+	"Երեխա: Իսկ հետո ինչպե՞ս պաշտպանեցին շրջակայքը։",
+	"Ռոբոտ-շուն: Հրշեջներն ու հազարավոր աշխատողներ պայքարեցին հրդեհի ու ռադիացիայի դեմ։ Վնասված ռեակտորը փակեցին պաշտպանիչ կառույցով, իսկ Պրիպյատն ու շրջակայքը մնացին փակ գոտում։",
+	"Երեխա: Ուրեմն դա միայն աշխատողների սխա՞լն էր։",
+	"Ռոբոտ-շուն: Ոչ։ Վթարին բերեցին մարդկային սխալների, անվտանգության կանոնների խախտումների ու ռեակտորի նախագծային թերությունների համադրությունը։ Մյուս բլոկները նորից աշխատեցին, բայց կայանն ամբողջությամբ փակվեց 2000-ին։",
+	"Երեխա: Չեռնոբիլի դասը ո՞րն է։",
+	"Ռոբոտ-շուն: Վտանգը պետք է ընդունել, հետաքննել ու դրա մասին ազնվորեն զգուշացնել։",
+	"Երեխա: Շատ տխուր պատմություն է։ Կուզեի՝ մարդիկ ժամանակին իմանային վտանգի մասին։ Ես արդեն հոգնել եմ… գնամ քնեմ։"
 ]
 
 @onready var stand_up: Node = $"Intro/StandUp"
@@ -95,6 +139,12 @@ func _ready() -> void:
 	_create_rooster_player()
 	_create_chernobyl_audio()
 	_create_dog_bark_player()
+	book_open_player = _create_effect_player(BOOK_OPEN_SFX, "BookOpenSfx", -12.0)
+	flicker_player = _create_effect_player(FLICKER_SFX, "LightFlickerSfx", -15.0)
+	radio_player = _create_effect_player(RADIO_SFX, "RadioSfx", -14.0)
+	power_surge_player = _create_effect_player(POWER_SURGE_SFX, "PowerSurgeSfx", -8.0)
+	countdown_beep_player = _create_effect_player(COUNTDOWN_BEEP_SFX, "CountdownBeepSfx", -13.0)
+	plant_door_player = _create_effect_player(PLANT_DOOR_OPEN_SFX, "PlantDoorOpenSfx", -7.0)
 	_create_chernobyl_environment()
 	_create_mission_hud()
 
@@ -109,11 +159,24 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	if get_node_or_null("SuccessEnding") != null:
+		return
+
 	if mission_active or mission_dialogue_open or terminal_overlay != null:
 		_update_bomb_countdown(_delta)
 		if bomb_exploded:
 			return
 		if mission_dialogue_open:
+			if typing_dialogue:
+				typewriter_elapsed += _delta
+				var visible_count := int(typewriter_elapsed * 46.0)
+				dialogue_text.visible_characters = mini(visible_count, dialogue_text.text.length())
+				if dialogue_text.visible_characters >= dialogue_text.text.length():
+					typing_dialogue = false
+				elif Input.is_action_just_pressed("E") or Input.is_action_just_pressed("Right"):
+					dialogue_text.visible_characters = -1
+					typing_dialogue = false
+				return
 			if Input.is_action_just_pressed("E") or Input.is_action_just_pressed("Right"):
 				_advance_mission_dialogue()
 			return
@@ -125,6 +188,7 @@ func _process(_delta: float) -> void:
 		return
 
 	if not table_view_active:
+		_update_bedroom_prompt()
 		if bed_player_in_area and Input.is_action_just_pressed("E"):
 			_start_sleep()
 			return
@@ -148,7 +212,7 @@ func _process(_delta: float) -> void:
 			if dialogue_index == DIALOGUE_LINES.size() - 1:
 				conversation_finished = true
 		if typing_dialogue:
-			if Input.is_action_just_pressed("Right"):
+			if Input.is_action_just_pressed("Right") or Input.is_action_just_pressed("E"):
 				dialogue_text.visible_characters = -1
 				typing_dialogue = false
 				if dialogue_index == DIALOGUE_LINES.size() - 1:
@@ -156,11 +220,11 @@ func _process(_delta: float) -> void:
 			return
 
 	if not book_is_open:
-		if Input.is_action_just_pressed("Right"):
+		if Input.is_action_just_pressed("Right") or Input.is_action_just_pressed("E"):
 			_set_book_open(true)
 		return
 
-	if Input.is_action_just_pressed("Right"):
+	if Input.is_action_just_pressed("Right") or Input.is_action_just_pressed("E"):
 		if conversation_finished and dialogue_index == DIALOGUE_LINES.size() - 1:
 			_close_table_view()
 		elif dialogue_index < DIALOGUE_LINES.size() - 1:
@@ -180,6 +244,13 @@ func _input(event: InputEvent) -> void:
 			_rewind_after_explosion()
 			get_viewport().set_input_as_handled()
 			return
+
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F:
+		if mission_active and guard_talked and entry_door_open and not inside_plant and not room_transition_active and not mission_dialogue_open and terminal_overlay == null and not bomb_exploded:
+			if absf(player_body.global_position.x - PLANT_ENTRY_POSITION.x) <= 110.0:
+				_enter_plant_interior()
+				get_viewport().set_input_as_handled()
+				return
 
 	if not table_view_active or animation_busy:
 		return
@@ -215,6 +286,8 @@ func _set_book_open(open: bool) -> void:
 	opening_book = open
 	animation_busy = true
 	if open:
+		if book_open_player != null:
+			book_open_player.play()
 		book_sprite.frame = book_sprite.sprite_frames.get_frame_count("default") - 1
 		book_sprite.play_backwards("default")
 	else:
@@ -257,9 +330,35 @@ func _create_dialogue_ui() -> void:
 	dialogue_panel.visible = false
 	layer.add_child(dialogue_panel)
 
+	guard_dialogue_backing = ColorRect.new()
+	guard_dialogue_backing.name = "GuardPortraitBacking"
+	guard_dialogue_backing.position = Vector2(panel_width * 0.035, panel_height * 0.13)
+	guard_dialogue_backing.size = Vector2(panel_width * 0.19, panel_height * 0.75)
+	guard_dialogue_backing.color = Color("#f8d4a1")
+	guard_dialogue_backing.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	guard_dialogue_backing.visible = false
+	dialogue_panel.add_child(guard_dialogue_backing)
+
+	guard_dialogue_portrait = TextureRect.new()
+	guard_dialogue_portrait.name = "GuardDialoguePortrait"
+	guard_dialogue_portrait.position = guard_dialogue_backing.position
+	guard_dialogue_portrait.size = guard_dialogue_backing.size
+	guard_dialogue_portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	guard_dialogue_portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	guard_dialogue_portrait.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	guard_dialogue_portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	guard_dialogue_portrait.visible = false
+	var guard_sheet := load(GUARD_SPRITE) as Texture2D
+	if guard_sheet != null:
+		var guard_head := AtlasTexture.new()
+		guard_head.atlas = guard_sheet
+		guard_head.region = Rect2(543.0, 0.0, 271.0, 220.0)
+		guard_dialogue_portrait.texture = guard_head
+	dialogue_panel.add_child(guard_dialogue_portrait)
+
 	dialogue_text = Label.new()
 	dialogue_text.name = "ChildQuestion"
-	dialogue_text.text = "Երեխա: Ինչ պատահեց Չեռնոբիլում?"
+	dialogue_text.text = "Երեխա: Կպատմե՞ս Չեռնոբիլի ատոմակայանի մասին։ Ինչո՞ւ այն պայթեց։"
 	dialogue_text.position = Vector2(panel_width * 0.33, panel_height * 0.14)
 	dialogue_text.size = Vector2(panel_width * 0.63, panel_height * 0.72)
 	dialogue_text.custom_maximum_size = dialogue_text.size
@@ -316,6 +415,7 @@ func _start_sleep() -> void:
 	player_body.velocity = Vector2.ZERO
 	player_body.set_physics_process(false)
 	player_body.set_process(false)
+	player_body.call("stop_movement_audio")
 
 	var player_sprite: AnimatedSprite2D = player_body.get_node("AnimatedSprite2D")
 	player_sprite.stop()
@@ -333,16 +433,22 @@ func _start_sleep() -> void:
 	_start_chernobyl_environment()
 	mission_active = true
 	guard_sprite.visible = true
-	remote_panel_marker.visible = true
-	countdown_label.text = "Մինչև պայթյունը՝ 20:00"
+	countdown_label.text = "Մինչև պայթյունը՝ 05:00"
 	countdown_label.visible = false
-	player_body.call("wake_up_at", Vector2(580.0, 530.0))
+	player_body.call("wake_up_at", Vector2(200.0, 530.0))
 	if rooster_player != null:
 		rooster_player.play()
 
 	var reveal_tween := create_tween()
 	reveal_tween.tween_property(fade_to_black, "color:a", 0.0, 0.8)
 	await reveal_tween.finished
+	await get_tree().create_timer(2.0).timeout
+	_begin_mission_dialogue([
+		"Երեխա: Որտե՞ղ ենք… Ես իմ սենյակում էի։ Սա ատոմակայանի միջո՞ցն է։",
+		"Ռոբոտ-շուն: Սկանավորում եմ… Սա Չեռնոբիլի ատոմակայանն է։ Ամսաթիվը՝ 1986 թ. ապրիլի 26։ Ես էլ չգիտեմ՝ ինչպես հայտնվեցինք այստեղ։",
+		"Երեխա: Դու հենց նոր պատմում էիր այս տեղի մասին։ Սա նույն պատմությո՞ւնն է։",
+		"Ռոբոտ-շուն: Չգիտեմ։ Բայց ահազանգը ցույց է տալիս՝ կայանի ներսում մի բան այն չէ։ Գտնենք հերթապահին ու պարզենք՝ ինչ է կատարվում։"
+	], "awakening")
 
 
 func _activate_plant_play_area() -> void:
@@ -368,10 +474,23 @@ func _update_bomb_countdown(delta: float) -> void:
 		return
 
 	countdown_seconds = maxf(countdown_seconds - delta, 0.0)
+	if countdown_seconds <= 10.0:
+		countdown_beep_elapsed += delta
+		if countdown_beep_elapsed >= 1.0:
+			countdown_beep_elapsed = 0.0
+			if countdown_beep_player != null:
+				countdown_beep_player.play()
+	else:
+		countdown_beep_elapsed = 0.0
 	var whole_seconds := int(ceil(countdown_seconds))
 	var minutes := int(whole_seconds / 60)
 	var seconds := whole_seconds % 60
 	countdown_label.text = "Մինչև պայթյունը՝ %02d:%02d" % [minutes, seconds]
+	if countdown_seconds <= 60.0:
+		var pulse := 0.58 + 0.42 * (0.5 + 0.5 * sin(float(Time.get_ticks_msec()) * 0.012))
+		countdown_label.modulate = Color(1.0, 1.0, 1.0, pulse)
+	else:
+		countdown_label.modulate = Color.WHITE
 	if countdown_seconds <= 0.0:
 		_trigger_bomb_explosion()
 
@@ -391,22 +510,38 @@ func _update_mission_prompt() -> void:
 			interaction_hint.visible = true
 		return
 
-	if absf(player_x - REMOTE_PANEL_POSITION.x) <= 170.0:
-		interaction_hint.text = "E — օգտագործել հեռակառավարման վահանակը"
+	if not inside_plant:
+		if absf(player_x - PLANT_ENTRY_POSITION.x) <= 110.0:
+			interaction_hint.text = "F — մտնել ատոմակայան"
+		else:
+			interaction_hint.text = "Մոտեցիր բաց դռանը"
 	else:
-		interaction_hint.text = "Գնա դեպի հեռակառավարման վահանակը"
+		if absf(player_x - REMOTE_PANEL_POSITION.x) <= 145.0:
+			interaction_hint.text = "E — օգտագործել կառավարման վահանակը"
+		else:
+			interaction_hint.text = "Գտիր կառավարման վահանակը"
 	interaction_hint.visible = true
+
+
+func _update_bedroom_prompt() -> void:
+	if bed_player_in_area:
+		interaction_hint.text = "Քնել"
+		interaction_hint.visible = true
+	elif player_in_area:
+		interaction_hint.text = "Նստել սեղանի մոտ"
+		interaction_hint.visible = true
+	else:
+		interaction_hint.visible = false
 
 
 func _handle_mission_interaction() -> void:
 	var player_x := player_body.global_position.x
 	if not guard_talked and absf(player_x - GUARD_POSITION.x) <= 110.0:
 		_begin_mission_dialogue([
-			"Երեխա: Ես վտանգի մասին տեղեկություն ունեմ․ 20 րոպեից պայթյուն է լինելու։",
-		"Պահակ: Դժվար է հավատալ, տղա՛ս, բայց ազդանշաններն էլ են խափանում ցույց տալիս։ Ահա անցագիրը։ Գլխավոր վահանակի կոդը VWRS է։ Վազի՛ր, միայն դու կարող ես կանգնեցնել սա։",
-			"Ռոբոտ-շուն: Շտապենք դեպի վահանակը։ Պայթյունին մնացել է 20 րոպե։"
+			"Երեխա: Պարո՛ն, չորրորդ էներգաբլոկի ազդանշանները ցույց են տալիս՝ 5 րոպեից վթար է լինելու։ Պետք է տարհանել մարդկանց։",
+			"Պահակ: Ես էլ եմ տեսնում ճնշման անկումը, բայց կառավարման սենյակը փակ է։ Վերցրու անցագիրս։ Հերթափոխի կոդը VWRS է։ Ես ռադիոյով կկանչեմ անձնակազմին։"
 		], "guard")
-	elif guard_talked and absf(player_x - REMOTE_PANEL_POSITION.x) <= 170.0:
+	elif inside_plant and absf(player_x - REMOTE_PANEL_POSITION.x) <= 145.0:
 		_open_remote_panel()
 
 
@@ -415,6 +550,11 @@ func _begin_mission_dialogue(lines: Array[String], source: String) -> void:
 	mission_dialogue_source = source
 	mission_dialogue_index = 0
 	mission_dialogue_open = true
+	if source != "code_hint":
+		player_body.velocity = Vector2.ZERO
+		player_body.set_process(false)
+		player_body.set_physics_process(false)
+		player_body.call("stop_movement_audio")
 	interaction_hint.text = "E կամ → — շարունակել"
 	interaction_hint.visible = true
 	_show_mission_dialogue_line()
@@ -422,12 +562,17 @@ func _begin_mission_dialogue(lines: Array[String], source: String) -> void:
 
 func _show_mission_dialogue_line() -> void:
 	var line := mission_dialogue_lines[mission_dialogue_index]
+	var guard_is_speaking := line.begins_with("Պահակ:")
 	if line.begins_with("Ռոբոտ-շուն"):
 		dialogue_panel.texture = robot_dialogue_texture
 	else:
 		dialogue_panel.texture = load(CHILD_DIALOGUE) as Texture2D
+	guard_dialogue_backing.visible = guard_is_speaking
+	guard_dialogue_portrait.visible = guard_is_speaking and guard_dialogue_portrait.texture != null
 	dialogue_text.text = line
-	dialogue_text.visible_characters = -1
+	dialogue_text.visible_characters = 0
+	typewriter_elapsed = 0.0
+	typing_dialogue = true
 	dialogue_panel.visible = true
 
 
@@ -443,12 +588,133 @@ func _advance_mission_dialogue() -> void:
 		guard_talked = true
 		countdown_active = true
 		countdown_seconds = BOMB_COUNTDOWN_SECONDS
-		countdown_label.text = "Մինչև պայթյունը՝ 20:00"
+		countdown_beep_elapsed = 0.0
+		countdown_label.text = "Մինչև պայթյունը՝ 05:00"
 		countdown_label.visible = true
+		_open_plant_entrance()
+		if radio_player != null:
+			radio_player.play()
+		player_body.set_process(true)
+		player_body.set_physics_process(true)
+	elif mission_dialogue_source == "awakening":
+		player_body.set_process(true)
+		player_body.set_physics_process(true)
 	elif mission_dialogue_source == "success":
-		interaction_hint.text = "Փուլ 1-ն ավարտված է։ Խաղը շարունակվում է։"
-		interaction_hint.visible = true
-	interaction_hint.visible = true
+		_show_success_ending()
+	elif mission_dialogue_source == "code_hint":
+		if is_instance_valid(terminal_overlay):
+			terminal_overlay.visible = true
+		if is_instance_valid(terminal_code_input):
+			terminal_code_input.grab_focus()
+
+
+func _open_plant_entrance() -> void:
+	if entry_door_open:
+		return
+	entry_door_open = true
+	if guard_sprite != null:
+		guard_sprite.stop()
+	if plant_door_player != null:
+		plant_door_player.play()
+	if entry_door_pivot != null:
+		entry_door_pivot.visible = true
+		create_tween().tween_property(entry_door_pivot, "rotation", -1.05, 0.7).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+
+
+func _enter_plant_interior() -> void:
+	if room_transition_active or not entry_door_open or interior_background == null or entry_door_pivot == null:
+		return
+	room_transition_active = true
+	interaction_hint.visible = false
+	player_body.velocity = Vector2.ZERO
+	player_body.set_physics_process(false)
+	player_body.set_process(false)
+	player_body.call("stop_movement_audio")
+	var fade_out := create_tween()
+	fade_out.tween_property(fade_to_black, "color:a", 1.0, 0.35)
+	await fade_out.finished
+
+	chernobyl_background.visible = false
+	interior_background.visible = true
+	guard_sprite.visible = false
+	entry_door_pivot.visible = false
+	inside_plant = true
+	player_body.call("teleport_to", Vector2(220.0, 530.0))
+	var camera := player_body.get_node_or_null("Camera2D") as Camera2D
+	if camera != null:
+		camera.limit_right = int(PLANT_INTERIOR_WIDTH)
+		camera.reset_smoothing()
+	player_body.set_process(true)
+	player_body.set_physics_process(true)
+
+	var fade_in := create_tween()
+	fade_in.tween_property(fade_to_black, "color:a", 0.0, 0.5)
+	await fade_in.finished
+	room_transition_active = false
+
+
+func _show_success_ending() -> void:
+	mission_active = false
+	countdown_active = false
+	interaction_hint.visible = false
+	var ending_layer := CanvasLayer.new()
+	ending_layer.name = "SuccessEnding"
+	ending_layer.layer = 15
+	ending_layer.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(ending_layer)
+
+	var dim := ColorRect.new()
+	dim.color = Color(0.025, 0.035, 0.055, 0.94)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	ending_layer.add_child(dim)
+
+	var panel_size := Vector2(850.0, 450.0)
+	var panel := PanelContainer.new()
+	panel.position = (get_viewport().get_visible_rect().size - panel_size) * 0.5
+	panel.size = panel_size
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color("#151d2a")
+	panel_style.border_color = Color("#e0a451")
+	panel_style.set_border_width_all(4)
+	panel_style.set_content_margin_all(30.0)
+	panel.add_theme_stylebox_override("panel", panel_style)
+	dim.add_child(panel)
+
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 20)
+	panel.add_child(content)
+
+	var title := Label.new()
+	title.text = "ՊԱՏՄՈՒԹՅՈՒՆԸ ՓՈԽՎԵՑ"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 32)
+	title.add_theme_color_override("font_color", Color("#f4bd70"))
+	content.add_child(title)
+
+	var epilogue := Label.new()
+	epilogue.text = "Այս խաղում վթարը կանխվեց։ Իրականում՝ 1986 թ. ապրիլի 26-ին Չեռնոբիլի 4-րդ էներգաբլոկի վթարը տեղի ունեցավ տուրբագեներատորի փորձարկման ժամանակ։ Դրան նպաստեցին և՛ շահագործման սխալները, և՛ ռեակտորի նախագծային թերությունները․ պատճառը մեկ կոճակ չէր։"
+	epilogue.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	epilogue.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	epilogue.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	epilogue.custom_minimum_size = Vector2(0.0, 190.0)
+	epilogue.add_theme_font_size_override("font_size", 21)
+	epilogue.add_theme_color_override("font_color", Color("#e6e2dc"))
+	content.add_child(epilogue)
+
+	var source_note := Label.new()
+	source_note.text = "Պատմական աղբյուր՝ IAEA, INSAG-7"
+	source_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	source_note.add_theme_font_size_override("font_size", 14)
+	source_note.add_theme_color_override("font_color", Color("#aab2be"))
+	content.add_child(source_note)
+
+	var restart_button := Button.new()
+	restart_button.text = "ԿՐԿԻՆ ԽԱՂԱԼ"
+	restart_button.custom_minimum_size = Vector2(0.0, 54.0)
+	restart_button.add_theme_font_size_override("font_size", 22)
+	restart_button.pressed.connect(func(): get_tree().reload_current_scene())
+	content.add_child(restart_button)
 
 
 func _open_remote_panel() -> void:
@@ -461,6 +727,9 @@ func _open_remote_panel() -> void:
 	mission_hud_layer.add_child(terminal_overlay)
 	player_body.set_physics_process(false)
 	player_body.set_process(false)
+	player_body.call("stop_movement_audio")
+	if radio_player != null:
+		radio_player.play()
 
 	var dim := ColorRect.new()
 	dim.color = Color(0.015, 0.025, 0.04, 0.86)
@@ -468,7 +737,7 @@ func _open_remote_panel() -> void:
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	terminal_overlay.add_child(dim)
 
-	var panel_size := Vector2(760.0, 520.0)
+	var panel_size := Vector2(820.0, 590.0)
 	var panel := PanelContainer.new()
 	panel.position = (get_viewport().get_visible_rect().size - panel_size) * 0.5
 	panel.size = panel_size
@@ -492,14 +761,14 @@ func _open_remote_panel() -> void:
 	column.add_child(heading)
 
 	var code_hint := Label.new()
-	code_hint.text = "Պահակի տված կոդը՝ VWRS"
+	code_hint.text = "ԳԱՂՏՆԱԲԱՌ"
 	code_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	code_hint.add_theme_font_size_override("font_size", 22)
 	code_hint.add_theme_color_override("font_color", Color("#d7e2e9"))
 	column.add_child(code_hint)
 
 	terminal_code_input = LineEdit.new()
-	terminal_code_input.placeholder_text = "Մուտքագրիր կոդը"
+	terminal_code_input.placeholder_text = "Մուտքագրիր գաղտնաբառը"
 	terminal_code_input.max_length = 16
 	terminal_code_input.custom_minimum_size = Vector2(0.0, 52.0)
 	terminal_code_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -525,7 +794,7 @@ func _open_remote_panel() -> void:
 	column.add_child(terminal_feedback)
 
 	terminal_morse = Label.new()
-	terminal_morse.text = "ՄՈՐԶԵԻ ՀՈՒՇՈՒՄ՝ .-.   .   -.."
+	terminal_morse.text = "ՄՈՐԶԵԻ ԱԶԴԱՆՇԱՆ՝ .-.   .   -.."
 	terminal_morse.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	terminal_morse.add_theme_font_size_override("font_size", 24)
 	terminal_morse.add_theme_color_override("font_color", Color("#ff514b"))
@@ -537,9 +806,18 @@ func _open_remote_panel() -> void:
 	terminal_switch_row.add_theme_constant_override("separation", 10)
 	terminal_switch_row.visible = code_solved
 	column.add_child(terminal_switch_row)
-	for switch_name in ["ԴԵՂԻՆ", "ԿԱՆԱՉ", "ԿԱՐՄԻՐ", "ՍՊԻՏԱԿ"]:
+	var morse_button_names := {
+		"ԿԱՐՄԻՐ": ".-.   .   -..",
+		"ԴԵՂԻՆ": "-.--   .   .-..   .-..   ---   .--",
+		"ԿԱՆԱՉ": "--.   .-.   .   .   -.",
+		"ԿԱՊՈՒՅՏ": "-...   .-..   ..-   ."
+	}
+	for switch_name in ["ԿԱՐՄԻՐ", "ԴԵՂԻՆ", "ԿԱՆԱՉ", "ԿԱՊՈՒՅՏ"]:
+		var button_column := VBoxContainer.new()
+		button_column.custom_minimum_size = Vector2(150.0, 96.0)
+		button_column.add_theme_constant_override("separation", 5)
 		var switch_button := Button.new()
-		switch_button.text = switch_name
+		switch_button.text = ""
 		switch_button.custom_minimum_size = Vector2(145.0, 58.0)
 		switch_button.add_theme_font_size_override("font_size", 20)
 		var switch_style := StyleBoxFlat.new()
@@ -547,20 +825,25 @@ func _open_remote_panel() -> void:
 			"ԴԵՂԻՆ": "#c9a131",
 			"ԿԱՆԱՉ": "#2b784b",
 			"ԿԱՐՄԻՐ": "#b62424",
-			"ՍՊԻՏԱԿ": "#d7dce0"
+			"ԿԱՊՈՒՅՏ": "#287bb8"
 		}
 		switch_style.bg_color = Color(switch_colors[switch_name])
 		switch_style.set_content_margin_all(10.0)
 		switch_button.add_theme_stylebox_override("normal", switch_style)
-		if switch_name == "ՍՊԻՏԱԿ":
-			switch_button.add_theme_color_override("font_color", Color("#1b252d"))
 		switch_button.pressed.connect(_choose_switch.bind(switch_name))
-		terminal_switch_row.add_child(switch_button)
+		button_column.add_child(switch_button)
+		var morse_name := Label.new()
+		morse_name.text = morse_button_names[switch_name]
+		morse_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		morse_name.add_theme_font_size_override("font_size", 12)
+		morse_name.add_theme_color_override("font_color", Color("#e6e2dc"))
+		button_column.add_child(morse_name)
+		terminal_switch_row.add_child(button_column)
 		if switch_name == "ԿԱՐՄԻՐ":
 			terminal_red_button = switch_button
 	if code_solved:
 		terminal_code_input.editable = false
-		terminal_feedback.text = "Մուտքն ընդունված է։ Վահանակի ներքևում նոր հուշում կա։"
+		terminal_feedback.text = "ՄՈՒՏՔԸ ԲԱՑՎԵՑ։"
 		terminal_feedback.add_theme_color_override("font_color", Color("#9be09b"))
 		terminal_morse.visible = true
 		terminal_red_button.visible = true
@@ -585,22 +868,26 @@ func _submit_remote_code() -> void:
 	var answer := terminal_code_input.text.strip_edges().to_upper()
 	if answer == "STOP":
 		code_solved = true
-		terminal_feedback.text = "Մուտքն ընդունված է։ Վահանակի ներքևում նոր հուշում կա։"
+		terminal_feedback.text = "ՄՈՒՏՔԸ ԲԱՑՎԵՑ։"
 		terminal_feedback.add_theme_color_override("font_color", Color("#9be09b"))
 		terminal_morse.visible = true
 		terminal_switch_row.visible = true
 		terminal_red_button.visible = true
 		terminal_code_input.editable = false
-	elif answer == "VWRS":
-		terminal_feedback.text = "Սխալ է։ Ռոբոտ-շուն․ «Սա շիֆրովկա է։ Տառերը երեք քայլ ետ տեղափոխիր»։"
-		terminal_feedback.add_theme_color_override("font_color", Color("#ff9c86"))
-		if dog_bark_player != null:
-			dog_bark_player.play()
-		terminal_code_input.clear()
+		if radio_player != null:
+			radio_player.play()
 	else:
-		terminal_feedback.text = "Կոդը սխալ է։ Փորձիր նորից։"
+		terminal_feedback.text = "ՄՈՒՏՔԸ ՄԵՐԺՎԵՑ։"
 		terminal_feedback.add_theme_color_override("font_color", Color("#ff9c86"))
 		terminal_code_input.clear()
+		if not code_hint_shown:
+			code_hint_shown = true
+			terminal_code_input.release_focus()
+			terminal_overlay.visible = false
+			_begin_mission_dialogue([
+				"Ռոբոտ-շուն: Կոդը մի՛ ընդունիր բառացի։ Վահանակը հին ծածկագիր է օգտագործում։ Նախ փորձենք, հետո կվերլուծեմ սխալը։"
+			], "code_hint")
+			return
 	terminal_code_input.grab_focus()
 
 
@@ -624,12 +911,15 @@ func _disarm_bomb() -> void:
 		return
 	bomb_disarmed = true
 	countdown_active = false
+	if countdown_beep_player != null:
+		countdown_beep_player.stop()
 	_close_remote_panel()
 	countdown_label.text = "ՌՈՒՄԲՆ ԱՆՋԱՏՎԱԾ Է"
 	countdown_label.add_theme_color_override("font_color", Color("#9be09b"))
 	_begin_mission_dialogue([
-		"Ռոբոտ-շուն: Մորզեի կոդը RED էր։ Կարմիր կոճակը սեղմվեց։",
-		"Պահակ: Ռումբն անջատված է։ Դու փրկեցիր կայանը։"
+		"Ռոբոտ-շուն: Մորզեն ասում էր՝ RED։ Ճիշտ անջատիչը գտանք․ վթարային շղթան անջատված է։",
+		"Պահակ: Ազդանշանը դադարեց։ Անձնակազմին տարհանման հրաման տվեցի։ Լավ արեցիր, որ չանտեսեցիր վտանգը։",
+		"Երեխա: Այս անգամ պատմությունը փոխեցինք։ Գնանք տեսնենք՝ ինչ փոխվեց մյուս էջում։"
 	], "success")
 
 
@@ -653,6 +943,11 @@ func _trigger_bomb_explosion(reason: String = "Ժամանակը սպառվեց")
 	player_body.velocity = Vector2.ZERO
 	player_body.set_physics_process(false)
 	player_body.set_process(false)
+	player_body.call("stop_movement_audio")
+	if countdown_beep_player != null:
+		countdown_beep_player.stop()
+	if power_surge_player != null:
+		power_surge_player.play()
 
 	var explosion_layer := CanvasLayer.new()
 	explosion_layer.name = "ExplosionOverlay"
@@ -664,7 +959,7 @@ func _trigger_bomb_explosion(reason: String = "Ժամանակը սպառվեց")
 	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	explosion_layer.add_child(overlay)
 	var message := Label.new()
-	message.text = "ՊԱՅԹՅՈՒՆ\n" + reason + "\nCtrl+Z — հետ գնալ 15 վայրկյան"
+	message.text = "ՊԱՅԹՅՈՒՆ\n" + reason + "\nCtrl+Z — ժամանակը հետ տալ 15 վայրկյան"
 	message.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	message.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -731,6 +1026,19 @@ func _create_dog_bark_player() -> void:
 	add_child(dog_bark_player)
 
 
+func _create_effect_player(resource_path: String, player_name: String, volume_db: float) -> AudioStreamPlayer:
+	var effect_stream := load(resource_path) as AudioStream
+	if effect_stream == null:
+		push_warning("Could not load sound effect: " + resource_path)
+		return null
+	var effect_player := AudioStreamPlayer.new()
+	effect_player.name = player_name
+	effect_player.stream = effect_stream
+	effect_player.volume_db = volume_db
+	add_child(effect_player)
+	return effect_player
+
+
 func _create_chernobyl_environment() -> void:
 	var sheet := load(CHERNOBYL_SHEET) as Texture2D
 	if sheet == null:
@@ -755,53 +1063,75 @@ func _create_chernobyl_environment() -> void:
 	stand_up.add_child(chernobyl_background)
 	chernobyl_background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
+	var interior_texture := load(CHERNOBYL_INTERIOR) as Texture2D
+	if interior_texture == null:
+		push_error("Could not load plant interior: " + CHERNOBYL_INTERIOR)
+	else:
+		interior_background = TextureRect.new()
+		interior_background.name = "ChernobylInterior"
+		interior_background.texture = interior_texture
+		interior_background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		interior_background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		interior_background.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		interior_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		interior_background.z_index = -11
+		interior_background.visible = false
+		stand_up.add_child(interior_background)
+		interior_background.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+		interior_background.position = Vector2(0.0, 22.0)
+		interior_background.size = Vector2(PLANT_INTERIOR_WIDTH, get_viewport().get_visible_rect().size.y)
+
+	var door_texture := load(ENTRANCE_DOOR_SPRITE) as Texture2D
+	if door_texture != null:
+		entry_door_pivot = Node2D.new()
+		entry_door_pivot.name = "PlantEntranceDoor"
+		entry_door_pivot.position = Vector2(
+			PLANT_ENTRY_POSITION.x - door_texture.get_width() * ENTRY_DOOR_SCALE * 0.5,
+			GUARD_GROUND_Y
+		)
+		entry_door_pivot.visible = false
+		var door_sprite := Sprite2D.new()
+		door_sprite.name = "DoorPanel"
+		door_sprite.texture = door_texture
+		door_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		door_sprite.scale = Vector2.ONE * ENTRY_DOOR_SCALE
+		door_sprite.position = Vector2(
+			door_texture.get_width() * ENTRY_DOOR_SCALE * 0.5,
+			-door_texture.get_height() * ENTRY_DOOR_SCALE * 0.5
+		)
+		door_sprite.z_index = 1
+		entry_door_pivot.add_child(door_sprite)
+		stand_up.add_child(entry_door_pivot)
+
 	var guard_sheet := load(GUARD_SPRITE) as Texture2D
 	if guard_sheet == null:
 		push_error("Could not load security guard sprite: " + GUARD_SPRITE)
 		return
 	var guard_frames := SpriteFrames.new()
-	guard_frames.add_animation("Idle")
-	guard_frames.set_animation_speed("Idle", 5.0)
-	guard_frames.set_animation_loop("Idle", true)
+	guard_frames.add_animation("Walk")
+	guard_frames.set_animation_speed("Walk", 8.0)
+	guard_frames.set_animation_loop("Walk", true)
 	for frame_index in range(8):
 		var guard_frame := AtlasTexture.new()
 		guard_frame.atlas = guard_sheet
 		guard_frame.region = Rect2(float(frame_index) * guard_sheet.get_width() / 8.0, 0.0, float(guard_sheet.get_width()) / 8.0, float(guard_sheet.get_height()))
-		guard_frames.add_frame("Idle", guard_frame)
+		guard_frames.add_frame("Walk", guard_frame)
 	guard_sprite = AnimatedSprite2D.new()
 	guard_sprite.name = "SecurityGuard"
 	guard_sprite.sprite_frames = guard_frames
-	guard_sprite.animation = "Idle"
+	guard_sprite.animation = "Walk"
 	guard_sprite.frame = 2
 	guard_sprite.flip_h = true
-	guard_sprite.position = GUARD_POSITION
-	guard_sprite.scale = Vector2(0.29, 0.29)
+	guard_sprite.scale = Vector2(GUARD_SCALE, GUARD_SCALE)
 	guard_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	guard_sprite.z_index = 2
 	guard_sprite.visible = false
+	guard_sprite.frame_changed.connect(Callable(self, "_align_guard_to_ground"))
+	guard_sprite.position = Vector2(
+		GUARD_POSITION.x,
+		GUARD_GROUND_Y - (GUARD_FRAME_BOTTOMS[guard_sprite.frame] - GUARD_FRAME_HEIGHT * 0.5) * GUARD_SCALE
+	)
 	stand_up.add_child(guard_sprite)
-
-	remote_panel_marker = PanelContainer.new()
-	remote_panel_marker.name = "RemoteControlMarker"
-	remote_panel_marker.position = REMOTE_PANEL_POSITION - Vector2(80.0, 108.0)
-	remote_panel_marker.size = Vector2(160.0, 78.0)
-	remote_panel_marker.z_index = 3
-	remote_panel_marker.visible = false
-	var marker_style := StyleBoxFlat.new()
-	marker_style.bg_color = Color("#151a20")
-	marker_style.border_color = Color("#d28a3a")
-	marker_style.set_border_width_all(3)
-	marker_style.set_content_margin_all(8.0)
-	remote_panel_marker.add_theme_stylebox_override("panel", marker_style)
-	var marker_label := Label.new()
-	marker_label.text = "REMOTE\nCONTROL"
-	marker_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	marker_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	marker_label.add_theme_color_override("font_color", Color("#f2c27d"))
-	marker_label.add_theme_font_size_override("font_size", 16)
-	remote_panel_marker.add_child(marker_label)
-	stand_up.add_child(remote_panel_marker)
-
 
 func _create_mission_hud() -> void:
 	mission_hud_layer = CanvasLayer.new()
@@ -844,12 +1174,27 @@ func _start_chernobyl_environment() -> void:
 		return
 	chernobyl_frame_index = CHERNOBYL_SELECTED_FRAME
 	chernobyl_background.texture = chernobyl_frames[chernobyl_frame_index]
+	interior_background.visible = false
+	entry_door_pivot.visible = false
 	bedroom_background.visible = false
 	chernobyl_background.visible = true
 	if guard_sprite != null:
-		guard_sprite.play("Idle")
+		guard_sprite.play("Walk")
+	if flicker_player != null:
+		flicker_player.play()
 	if chernobyl_ambience_player != null and not chernobyl_ambience_player.playing:
 		chernobyl_ambience_player.play()
+
+
+func _align_guard_to_ground() -> void:
+	if guard_sprite == null:
+		return
+	var frame_index := clampi(guard_sprite.frame, 0, GUARD_FRAME_BOTTOMS.size() - 1)
+	var frame_bottom: float = GUARD_FRAME_BOTTOMS[frame_index]
+	guard_sprite.position = Vector2(
+		GUARD_POSITION.x,
+		GUARD_GROUND_Y - (frame_bottom - GUARD_FRAME_HEIGHT * 0.5) * GUARD_SCALE
+	)
 
 
 func _stop_chernobyl_environment() -> void:
@@ -891,6 +1236,8 @@ func _on_book_animation_finished() -> void:
 
 func _show_dialogue_line() -> void:
 	var line: String = DIALOGUE_LINES[dialogue_index]
+	guard_dialogue_backing.visible = false
+	guard_dialogue_portrait.visible = false
 	if line.begins_with("Ռոբոտ-շուն"):
 		dialogue_panel.texture = robot_dialogue_texture
 	else:
@@ -908,6 +1255,11 @@ func _set_branch_active(branch: Node, active: bool) -> void:
 
 
 func _set_node_active(node: Node, active: bool) -> void:
+	# Mission actors belong to the bedroom branch for shared coordinates, but must
+	# stay hidden until the Chernobyl transition explicitly reveals them.
+	if node == guard_sprite or node == entry_door_pivot:
+		return
+
 	if node is CanvasItem:
 		node.visible = active
 
@@ -919,6 +1271,7 @@ func _set_node_active(node: Node, active: bool) -> void:
 		node.set_physics_process(active)
 		if not active:
 			node.velocity = Vector2.ZERO
+			node.call("stop_movement_audio")
 
 	if node is AnimatedSprite2D and not active:
 		node.stop()

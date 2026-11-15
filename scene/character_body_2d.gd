@@ -6,7 +6,7 @@ const DOUBLE_TAP_WINDOW := 0.3
 const DOG_FOLLOW_DELAY := 0.32
 const DOG_FOLLOW_DISTANCE := 160.0
 const DOG_FOLLOW_SPEED := 520.0
-const WAKE_CHARACTER_SCALE := 0.56
+const WAKE_CHARACTER_SCALE := 0.34
 const WALK_SPRITE_SCALE := Vector2(2.0, 2.45)
 const WALK_SPRITE_OFFSET := Vector2(0.0, -14.0)
 const IDLE_SPRITE_SCALE := Vector2(2.0, 2.21)
@@ -22,10 +22,14 @@ var facing_direction := 1.0
 var dog_vertical_offset := 0.0
 var trail_elapsed := 0.0
 var trail: Array[Dictionary] = []
+var footsteps_player: AudioStreamPlayer
 
 
 func _ready() -> void:
+	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	dog.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_play_character_animation("default")
+	_create_footsteps_player()
 	var player_sprite_bottom := _get_sprite_bottom_in_parent(sprite)
 	var dog_sprite_bottom := _get_sprite_bottom_in_parent(dog)
 	dog_vertical_offset = (player_sprite_bottom - dog_sprite_bottom) * absf(global_scale.y)
@@ -76,6 +80,21 @@ func wake_up_at(wake_position: Vector2) -> void:
 	wake_tween.set_parallel(true)
 	wake_tween.tween_property(sprite, "modulate:a", 1.0, 0.35)
 	wake_tween.tween_property(dog, "modulate:a", 1.0, 0.35)
+
+
+func teleport_to(new_position: Vector2) -> void:
+	global_position = new_position
+	velocity = Vector2.ZERO
+	trail_elapsed = 0.0
+	trail.clear()
+	trail.append({
+		"time": trail_elapsed,
+		"position": global_position,
+		"direction": facing_direction,
+	})
+	dog.global_position = global_position + Vector2(-facing_direction * DOG_FOLLOW_DISTANCE, dog_vertical_offset)
+	dog.flip_h = facing_direction < 0.0
+	dog.play("Idle")
 
 
 func _get_sprite_bottom_in_parent(animated_sprite: AnimatedSprite2D) -> float:
@@ -131,6 +150,34 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 	_update_dog_follow(delta)
+	_update_footsteps()
+
+
+func _create_footsteps_player() -> void:
+	var footsteps_stream := load("res://Music/footsteps.mp3") as AudioStreamMP3
+	if footsteps_stream == null:
+		return
+	footsteps_stream.loop = true
+	footsteps_player = AudioStreamPlayer.new()
+	footsteps_player.name = "Footsteps"
+	footsteps_player.stream = footsteps_stream
+	footsteps_player.volume_db = -16.0
+	add_child(footsteps_player)
+
+
+func _update_footsteps() -> void:
+	if footsteps_player == null:
+		return
+	if is_on_floor() and absf(velocity.x) > 8.0:
+		if not footsteps_player.playing:
+			footsteps_player.play()
+	elif footsteps_player.playing:
+		footsteps_player.stop()
+
+
+func stop_movement_audio() -> void:
+	if footsteps_player != null and footsteps_player.playing:
+		footsteps_player.stop()
 
 
 func _play_character_animation(animation_name: StringName) -> void:
