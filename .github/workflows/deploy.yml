@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GODOT_VERSION: 3.6.2
-      ITCH_GAME_SLUG: ${{ vars.ITCH_GAME || 'HAYQ333/ctrl-z' }}
+      ITCH_GAME_SLUG: ${{ vars.ITCH_GAME || 'real-school/ctrl-z' }}
     steps:
       - uses: actions/checkout@v4
         with:
