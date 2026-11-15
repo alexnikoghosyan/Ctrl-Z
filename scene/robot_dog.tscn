@@ -31,6 +31,14 @@ animations = [{
 "frames": [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_80ywi")
+}],
+"loop": true,
+"name": &"Idle",
+"speed": 4.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_80ywi")
 }, {
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_h86oa")
@@ -48,17 +56,17 @@ animations = [{
 "texture": SubResource("AtlasTexture_e2qfy")
 }],
 "loop": 1,
-"name": &"default",
-"speed": 5.0
+"name": &"Walk",
+"speed": 9.0
 }]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_7f2x3"]
 size = Vector2(328.65793, 252.44727)
 
 [node name="Robot_Dog" type="AnimatedSprite2D" unique_id=795447843]
-scale = Vector2(0.64, 0.64)
+scale = Vector2(0.7, 0.7)
 sprite_frames = SubResource("SpriteFrames_13qdw")
-autoplay = "default"
+autoplay = "Idle"
 frame_progress = 0.6713959
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1000533383]

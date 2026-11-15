@@ -6,6 +6,7 @@ const DOUBLE_TAP_WINDOW := 0.3
 const DOG_FOLLOW_DELAY := 0.32
 const DOG_FOLLOW_DISTANCE := 160.0
 const DOG_FOLLOW_SPEED := 520.0
+const WAKE_CHARACTER_SCALE := 0.56
 const WALK_SPRITE_SCALE := Vector2(2.0, 2.45)
 const WALK_SPRITE_OFFSET := Vector2(0.0, -14.0)
 const IDLE_SPRITE_SCALE := Vector2(2.0, 2.21)
@@ -31,7 +32,7 @@ func _ready() -> void:
 
 	dog.z_index = 1
 	sprite.z_index = 2
-	dog.play("default")
+	dog.play("Idle")
 
 	trail.append({
 		"time": trail_elapsed,
@@ -41,6 +42,11 @@ func _ready() -> void:
 
 
 func wake_up_at(wake_position: Vector2) -> void:
+	scale *= WAKE_CHARACTER_SCALE
+	dog.scale /= WAKE_CHARACTER_SCALE
+	dog_vertical_offset = (
+		_get_sprite_bottom_in_parent(sprite) - _get_sprite_bottom_in_parent(dog)
+	) * absf(global_scale.y)
 	global_position = wake_position
 	velocity = Vector2.ZERO
 	speed = WALK_SPEED
@@ -60,7 +66,7 @@ func wake_up_at(wake_position: Vector2) -> void:
 	sprite.visible = true
 	dog.global_position = global_position + Vector2(-DOG_FOLLOW_DISTANCE, dog_vertical_offset)
 	dog.flip_h = false
-	dog.play("default")
+	dog.play("Idle")
 	dog.modulate = Color(1.0, 1.0, 1.0, 0.0)
 	dog.visible = true
 	set_process(true)
@@ -78,12 +84,15 @@ func _get_sprite_bottom_in_parent(animated_sprite: AnimatedSprite2D) -> float:
 		return animated_sprite.position.y
 
 	var texture_size := texture.get_size()
-	var frame_bottom := animated_sprite.offset.y
+	var frame_bottom := texture_size.y
+	var frame_image := texture.get_image()
+	if frame_image != null and not frame_image.is_empty():
+		var visible_pixels := frame_image.get_used_rect()
+		if not visible_pixels.size.is_zero_approx():
+			frame_bottom = float(visible_pixels.end.y)
 	if animated_sprite.centered:
-		frame_bottom += texture_size.y * 0.5
-	else:
-		frame_bottom += texture_size.y
-	return animated_sprite.position.y + frame_bottom * animated_sprite.scale.y
+		frame_bottom -= texture_size.y * 0.5
+	return animated_sprite.position.y + (animated_sprite.offset.y + frame_bottom) * animated_sprite.scale.y
 
 
 func _physics_process(delta: float) -> void:
@@ -158,5 +167,9 @@ func _update_dog_follow(delta: float) -> void:
 	)
 
 	var blend := 1.0 - exp(-8.0 * delta)
+	var previous_dog_position := dog.global_position
 	dog.global_position = dog.global_position.lerp(target, blend)
 	dog.flip_h = direction < 0.0
+	var dog_animation: StringName = "Walk" if previous_dog_position.distance_to(dog.global_position) > 0.35 else "Idle"
+	if dog.animation != dog_animation:
+		dog.play(dog_animation)
