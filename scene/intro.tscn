@@ -133,7 +133,7 @@ offset_bottom = 654.0
 texture = ExtResource("2_b5vnh")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Intro/Standing_Down" unique_id=571957204]
-position = Vector2(544.6501, 391.5)
+position = Vector2(544.6501, 220.0)
 scale = Vector2(1.2085714, 1.2085714)
 sprite_frames = SubResource("SpriteFrames_13qdw")
 frame_progress = 1.0
