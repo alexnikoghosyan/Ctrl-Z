@@ -1,8 +1,5 @@
-# Web build and itch.io deploy (docs/deploy.md).
-# - pull_request: export the Web build and attach it to the run as an artifact (no deploy).
-# - push of a tag v* (a release on main, docs/workflow.md §6): export and push to itch.io with butler.
-# - workflow_dispatch: the same by hand, from any branch; deploy only if "deploy" is ticked.
-name: Deploy
+# Web build and itch.io deploy for Ctrl-Z (Godot 3.6.2)
+name: Deploy Ctrl-Z
 
 on:
   pull_request:
@@ -11,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       deploy:
-        description: Push the build to itch.io
+        description: Push Ctrl-Z build to itch.io
         type: boolean
         default: false
 
@@ -23,7 +20,8 @@ jobs:
   web:
     runs-on: ubuntu-latest
     env:
-      GODOT_VERSION: 4.7.2
+      GODOT_VERSION: 3.6.2
+      ITCH_GAME_SLUG: ${{ vars.ITCH_GAME || 'real-school/ctrl-z' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,41 +34,41 @@ jobs:
         with:
           path: |
             ~/godot
-            ~/.local/share/godot/export_templates
+            ~/.local/share/godot/templates
           key: godot-web-${{ env.GODOT_VERSION }}-linux-x86_64
 
-      # The full templates archive is ~1 GB; only the Web ones are kept in the cache.
-      - name: Download Godot and Web templates
+      - name: Download Godot 3.6.2 Headless and Web templates
         if: steps.cache-godot.outputs.cache-hit != 'true'
         run: |
           base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
           mkdir -p ~/godot
-          curl -sSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          curl -sSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux_headless.64.zip"
           unzip -q godot.zip -d ~/godot
-          mv ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 ~/godot/godot
+          mv ~/godot/Godot_v${GODOT_VERSION}-stable_linux_headless.64 ~/godot/godot
+          chmod +x ~/godot/godot
           curl -sSL -o templates.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
-          tdir=~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          tdir=~/.local/share/godot/templates/${GODOT_VERSION}.stable
           mkdir -p "$tdir"
-          unzip -q -j templates.tpz 'templates/web_nothreads_*' 'templates/version.txt' -d "$tdir"
+          unzip -q -j templates.tpz 'templates/webassembly_*' 'templates/version.txt' -d "$tdir"
           rm godot.zip templates.tpz
           ls -la "$tdir"
 
-      - name: Import project
+      - name: Import project assets
         run: |
-          rm -rf .godot
-          ~/godot/godot --headless --path . --import
+          rm -rf .import
+          ~/godot/godot --no-window --quit --path .
 
       - name: Export Web build
         run: |
           mkdir -p builds/web
-          ~/godot/godot --headless --path . --export-release "Web" builds/web/index.html
+          ~/godot/godot --no-window --path . --export "Web" builds/web/index.html
           test -s builds/web/index.pck || { echo "::error::Export produced no index.pck"; exit 1; }
           ls -la builds/web
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: web-${{ github.sha }}
+          name: ctrl-z-web-${{ github.sha }}
           path: builds/web
           retention-days: 14
 
@@ -78,13 +76,11 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v') || inputs.deploy
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
-          ITCH_GAME: ${{ vars.ITCH_GAME }}
         run: |
-          [ -n "$BUTLER_API_KEY" ] || { echo "::error::Secret BUTLER_API_KEY is not set (docs/deploy.md)"; exit 1; }
-          [ -n "$ITCH_GAME" ] || { echo "::error::Variable ITCH_GAME (user/game) is not set (docs/deploy.md)"; exit 1; }
+          [ -n "$BUTLER_API_KEY" ] || { echo "::error::Secret BUTLER_API_KEY is not set"; exit 1; }
           curl -sSL -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
           unzip -q butler.zip -d ~/butler
           chmod +x ~/butler/butler
           version=$(git describe --tags --always)
-          ~/butler/butler push builds/web "$ITCH_GAME:web" --userversion "$version"
-          ~/butler/butler status "$ITCH_GAME:web"
+          ~/butler/butler push builds/web "$ITCH_GAME_SLUG:web" --userversion "$version"
+          ~/butler/butler status "$ITCH_GAME_SLUG:web"
