@@ -56,7 +56,7 @@ animations = [{
 size = Vector2(328.65793, 252.44727)
 
 [node name="Robot_Dog" type="AnimatedSprite2D" unique_id=795447843]
-scale = Vector2(0.58318, 0.58318)
+scale = Vector2(0.64, 0.64)
 sprite_frames = SubResource("SpriteFrames_13qdw")
 autoplay = "default"
 frame_progress = 0.6713959
