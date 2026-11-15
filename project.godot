@@ -67,3 +67,7 @@ E={
 
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method="mobile"
+
+[gui]
+
+theme/custom_font="res://Fonts/ui_font.tres"

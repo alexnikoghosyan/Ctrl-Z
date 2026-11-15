@@ -373,7 +373,9 @@ func _create_dialogue_ui() -> void:
 	var pixel_font := load(PIXEL_FONT) as FontFile
 	if pixel_font != null:
 		pixel_font.antialiasing = TextServer.FONT_ANTIALIASING_NONE
-		pixel_font.fallbacks = [ThemeDB.fallback_font]
+		# Armenian and Cyrillic letters come from the bundled Noto fonts:
+		# web builds have no system fonts to fall back on.
+		pixel_font.fallbacks = [load("res://Fonts/ui_font.tres")]
 		dialogue_text.add_theme_font_override("font", pixel_font)
 	dialogue_panel.add_child(dialogue_text)
 
