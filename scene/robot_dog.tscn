@@ -1,0 +1,66 @@
+[gd_scene format=3 uid="uid://lpijkecw8hbd"]
+
+[ext_resource type="Texture2D" uid="uid://2h7catawlh2u" path="res://ChatGPT Image Nov 15, 2026, 10_13_12 AM.png" id="1_e7l5k"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_80ywi"]
+atlas = ExtResource("1_e7l5k")
+region = Rect2(0, 0, 362, 724)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_h86oa"]
+atlas = ExtResource("1_e7l5k")
+region = Rect2(362, 0, 362, 724)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_3rl4h"]
+atlas = ExtResource("1_e7l5k")
+region = Rect2(724, 0, 362, 724)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_4k0w2"]
+atlas = ExtResource("1_e7l5k")
+region = Rect2(1086, 0, 362, 724)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_ojq7p"]
+atlas = ExtResource("1_e7l5k")
+region = Rect2(1448, 0, 362, 724)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_e2qfy"]
+atlas = ExtResource("1_e7l5k")
+region = Rect2(1810, 0, 362, 724)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_13qdw"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_80ywi")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_h86oa")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_3rl4h")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_4k0w2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_ojq7p")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_e2qfy")
+}],
+"loop": 1,
+"name": &"default",
+"speed": 5.0
+}]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_7f2x3"]
+size = Vector2(328.65793, 252.44727)
+
+[node name="Robot_Dog" type="AnimatedSprite2D" unique_id=795447843]
+scale = Vector2(0.58318, 0.58318)
+sprite_frames = SubResource("SpriteFrames_13qdw")
+autoplay = "default"
+frame_progress = 0.6713959
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1000533383]
+position = Vector2(2.3815918, -7.1445313)
+shape = SubResource("RectangleShape2D_7f2x3")
