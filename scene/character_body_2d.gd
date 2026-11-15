@@ -21,8 +21,6 @@ var trail: Array[Dictionary] = []
 func _ready() -> void:
 	dog_vertical_offset = dog.global_position.y - global_position.y
 
-	# Detach the dog from the player so it can trail the player's path smoothly.
-	dog.reparent(get_parent(), true)
 	dog.z_index = 1
 	sprite.z_index = 2
 	dog.play("default")
