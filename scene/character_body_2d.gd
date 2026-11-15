@@ -88,7 +88,7 @@ func _get_sprite_bottom_in_parent(animated_sprite: AnimatedSprite2D) -> float:
 	var frame_image := texture.get_image()
 	if frame_image != null and not frame_image.is_empty():
 		var visible_pixels := frame_image.get_used_rect()
-		if not visible_pixels.size.is_zero_approx():
+		if visible_pixels.size != Vector2i.ZERO:
 			frame_bottom = float(visible_pixels.end.y)
 	if animated_sprite.centered:
 		frame_bottom -= texture_size.y * 0.5

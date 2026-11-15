@@ -16,6 +16,7 @@ const CHERNOBYL_FRAME_RECTS := [
 ]
 const ROOSTER_CROW := "res://Music/rooster_crow.mp3"
 const CHERNOBYL_AMBIENCE := "res://Music/chernobyl_ambience.mp3"
+const ROBOT_DOG_BARK := "res://Music/robot_dog_bark.mp3"
 const TYPEWRITER_SPEED := 32.0
 const BOMB_COUNTDOWN_SECONDS := 20.0 * 60.0
 const GUARD_POSITION := Vector2(760.0, 506.0)
@@ -46,6 +47,7 @@ var robot_dialogue_texture: Texture2D
 var fade_to_black: ColorRect
 var rooster_player: AudioStreamPlayer
 var chernobyl_ambience_player: AudioStreamPlayer
+var dog_bark_player: AudioStreamPlayer
 var chernobyl_background: TextureRect
 var chernobyl_frames: Array[Texture2D] = []
 var chernobyl_frame_index := 0
@@ -92,6 +94,7 @@ func _ready() -> void:
 	_create_fade_overlay()
 	_create_rooster_player()
 	_create_chernobyl_audio()
+	_create_dog_bark_player()
 	_create_chernobyl_environment()
 	_create_mission_hud()
 
@@ -400,7 +403,7 @@ func _handle_mission_interaction() -> void:
 	if not guard_talked and absf(player_x - GUARD_POSITION.x) <= 110.0:
 		_begin_mission_dialogue([
 			"Երեխա: Ես վտանգի մասին տեղեկություն ունեմ․ 20 րոպեից պայթյուն է լինելու։",
-		"Պահակ: Դժվար է հավատալ, տղա՛ս, բայց ազդանշաններն էլ են խափանում ցույց տալիս։ Գլխավոր վահանակի կոդը VWRS է։ Վազի՛ր, միայն դու կարող ես կանգնեցնել սա։",
+		"Պահակ: Դժվար է հավատալ, տղա՛ս, բայց ազդանշաններն էլ են խափանում ցույց տալիս։ Ահա անցագիրը։ Գլխավոր վահանակի կոդը VWRS է։ Վազի՛ր, միայն դու կարող ես կանգնեցնել սա։",
 			"Ռոբոտ-շուն: Շտապենք դեպի վահանակը։ Պայթյունին մնացել է 20 րոպե։"
 		], "guard")
 	elif guard_talked and absf(player_x - REMOTE_PANEL_POSITION.x) <= 170.0:
@@ -540,9 +543,17 @@ func _open_remote_panel() -> void:
 		switch_button.custom_minimum_size = Vector2(145.0, 58.0)
 		switch_button.add_theme_font_size_override("font_size", 20)
 		var switch_style := StyleBoxFlat.new()
-		switch_style.bg_color = Color("#b62424") if switch_name == "ԿԱՐՄԻՐ" else Color("#303b46")
+		var switch_colors := {
+			"ԴԵՂԻՆ": "#c9a131",
+			"ԿԱՆԱՉ": "#2b784b",
+			"ԿԱՐՄԻՐ": "#b62424",
+			"ՍՊԻՏԱԿ": "#d7dce0"
+		}
+		switch_style.bg_color = Color(switch_colors[switch_name])
 		switch_style.set_content_margin_all(10.0)
 		switch_button.add_theme_stylebox_override("normal", switch_style)
+		if switch_name == "ՍՊԻՏԱԿ":
+			switch_button.add_theme_color_override("font_color", Color("#1b252d"))
 		switch_button.pressed.connect(_choose_switch.bind(switch_name))
 		terminal_switch_row.add_child(switch_button)
 		if switch_name == "ԿԱՐՄԻՐ":
@@ -583,6 +594,8 @@ func _submit_remote_code() -> void:
 	elif answer == "VWRS":
 		terminal_feedback.text = "Սխալ է։ Ռոբոտ-շուն․ «Սա շիֆրովկա է։ Տառերը երեք քայլ ետ տեղափոխիր»։"
 		terminal_feedback.add_theme_color_override("font_color", Color("#ff9c86"))
+		if dog_bark_player != null:
+			dog_bark_player.play()
 		terminal_code_input.clear()
 	else:
 		terminal_feedback.text = "Կոդը սխալ է։ Փորձիր նորից։"
@@ -706,6 +719,16 @@ func _create_chernobyl_audio() -> void:
 	chernobyl_ambience_player.stream = ambience
 	chernobyl_ambience_player.volume_db = -12.0
 	add_child(chernobyl_ambience_player)
+
+
+func _create_dog_bark_player() -> void:
+	var bark_stream := load(ROBOT_DOG_BARK) as AudioStream
+	if bark_stream == null:
+		return
+	dog_bark_player = AudioStreamPlayer.new()
+	dog_bark_player.name = "RobotDogBark"
+	dog_bark_player.stream = bark_stream
+	add_child(dog_bark_player)
 
 
 func _create_chernobyl_environment() -> void:
